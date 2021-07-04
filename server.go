@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"net"
 	"sync"
 )
@@ -64,6 +65,10 @@ func (this *Server) Handler(conn net.Conn) {
 	this.mapLock.Unlock()
 
 	fmt.Println("当前已上线用户数：", len(this.OnlineMap))
+
+	//监听用户发送的消息，并广播
+	go this.ReadUserMessage(conn, user)
+
 	//广播当前用户上线消息
 	this.BroadCast(user, "已上线")
 
@@ -78,7 +83,7 @@ func (this *Server) BroadCast(user *User, msg string) {
 	this.Message <- sendMsg
 }
 
-//
+//监听message,将消息发送给所有用户
 func (this *Server) ListenMessage() {
 	for {
 		msg := <- this.Message
@@ -89,5 +94,24 @@ func (this *Server) ListenMessage() {
 			cli.C <- msg
 		}
 		this.mapLock.Unlock()
+	}
+}
+
+func (this * Server) ReadUserMessage(conn net.Conn, user *User) {
+	buf := make([]byte, 4096)
+	for  {
+		n, err := conn.Read(buf)
+		if n == 0 {
+			this.BroadCast(user, "下线")
+			fmt.Println("有用户下线啦：", user.Name)
+			return
+		}
+		if err != nil && err != io.EOF {
+			fmt.Println("Conn Read err:", err)
+		}
+
+		msg := string(buf)
+
+		this.BroadCast(user, msg)
 	}
 }
